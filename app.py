@@ -1,39 +1,38 @@
-from flask import Flask, request, render_template
-import h2o
+from flask import Flask, render_template, request
 import pandas as pd
-import os
+from h2o import mojo_predict
 
-# Start H2O
-h2o.init()
-
-# Load your saved H2O model
-model_path = "models/best_model"
-if not os.path.exists(model_path):
-    raise Exception("Model folder not found. Make sure 'best_model' exists inside 'models/'")
-model = h2o.load_model(model_path)
+MOJO_PATH = "models/best_model.zip"
 
 app = Flask(__name__)
+mojo_model = mojo_predict.MojoPredictor(MOJO_PATH)
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    prediction = None
-    if request.method == "POST":
-        # Get form data
-        data = {
-            "Pclass": [int(request.form["Pclass"])],
-            "Sex": [request.form["Sex"]],
-            "Age": [float(request.form["Age"])],
-            "SibSp": [int(request.form["SibSp"])],
-            "Parch": [int(request.form["Parch"])],
-            "Fare": [float(request.form["Fare"])],
-            "Embarked": [request.form["Embarked"]]
-        }
-        df = pd.DataFrame(data)
-        hf = h2o.H2OFrame(df)
-        preds = model.predict(hf)
-        prediction = preds.as_data_frame()["predict"][0]
+@app.route('/')
+def home():
+    return render_template('index.html')
 
-    return render_template("index.html", prediction=prediction)
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        # Collect input
+        df = pd.DataFrame([{
+            'Pclass': int(request.form['Pclass']),
+            'Sex': request.form['Sex'],
+            'Age': float(request.form['Age']),
+            'SibSp': int(request.form['SibSp']),
+            'Parch': int(request.form['Parch']),
+            'Fare': float(request.form['Fare']),
+            'Embarked': request.form['Embarked']
+        }])
+        
+        # Predict
+        preds = mojo_model.predict(df)
+        prediction = preds[0]
+        
+        return render_template('index.html', prediction_text=f"Predicted Survived: {prediction}")
+    
+    except Exception as e:
+        return str(e)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
